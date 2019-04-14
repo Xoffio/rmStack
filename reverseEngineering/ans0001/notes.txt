@@ -1,0 +1,124 @@
+In order to accomplish that you need some knowledge about ELF files. I'm not going explain every detail about ELF files since is a lot to cover so I'll try to be as precise as I can.
+
+*NOTE #01: I will use radare2 to dissect the file but you can do it with any hex editor out there.*
+
+*NOTE #02: Here is the link to the cpp file that I compile to explain you ELF files. Feel free to take it or make your own.*
+
+First, you need to know the structure of headers in ELF files. [Here][1] you can see the structures of the headers.
+
+The first thing we want to look for is `e_ident` that represent the format of the file (32bit or 64bit) since the file header will be different depending of the file format.
+
+> **e_ident** offset=0x04, size=1byte
+
+Go to the 0x04 offset of the file and check one byte. (`s` means seek)
+
+    :> s 0x04
+    0x00000004  02
+e_ident = 0x02 means 64bit format.
+
+Now that we now the file format we need to know the offset of the program header(`e_phoff`), the number of entries in the program header(`e_phentsize`), and the size of each entry(`e_phnum`).
+
+> **e_phoff** offset=0x20 	size=8bytes<br>
+> **e_phentsize** offset=0x36 	size=2bytes<br>
+> **e_phnum** offset=0x38 	size=2bytes
+
+    :> s 0x20
+    0x00000020  4000 0000 0000 0000
+
+    :> s 0x36
+    0x00000036  3800
+
+    :> s 0x38
+    0x00000038  0b00
+
+e_phoff = 0x40. Program header is found in the file offset 0x40.<br>
+e_phentsize = 0x38 (56 bytes)<br>
+e_phnum = 0x0b (11 entries)<br>
+
+Now that you have that information you can run a loop that checks all the program entries:
+    
+    //pseudocode
+    for (i=0; i<e_phnum; i++)
+        entryN = e_phoff+(e_phentsize*i);
+
+*NOTE #03:I'll not print those values here because I have to explain more but that will give you something similar to the command `readelf -W -l [program]`*
+
+Each entry has a structure like the program header. We want to look for the DYNAMIC entry. In order to get that we'll need to check for the type of entry(`p_type`), the address where the segment is located(`p_vaddr`), and the size of the segment(`p_filesz`)
+
+> **p_type** offset=0x00, 	size=4bytes 	 	
+> **p_vaddr** offset=0x10 	size=8bytes<br>
+> **p_filesz** offset=0x20 	size=8bytes
+
+In the loop that you wrote before you going to add the offset.
+In my case the dynamic entry is the 7th
+
+    // e_phoff+(e_phentsize*i)+p_type
+    :> s 0x40+(0x38*0x06)+0x00
+    0x00000190  0200 0000
+    
+    // e_phoff+(e_phentsize*i)+p_vaddr
+    :> s 0x40+(0x38*0x06)+0x10
+    0x000001a0  883d 0000 0000 0000
+
+    // e_phoff+(e_phentsize*i)+p_filesz
+    :> s 0x40+(0x38*0x06)+0x20
+    0x000001b0  0002 0000 0000 0000
+
+p_type = 0x02 that means PT_DYNAMIC Dynamic linking information<br> 
+p_vaddr = 0x3d88 address of PT_DYNAMIC <br>
+p_filesz = 0x200 (512bytes) size of PT_DYNAMIC.
+
+PT_DYNAMIC contains an array of the next structure (refLink):
+
+    typedef struct {
+    	Elf64_Sxword	d_tag;
+       	union {
+       		Elf64_Xword	d_val;
+       		Elf64_Addr	d_ptr;
+    	} d_un;
+    } Elf64_Dyn;
+
+
+  [1]: https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
+
+
+
+
+  -------------------
+
+  
+
+We want to look for the DYNAMIC entry. In order to get that we'll need to check for the type of entry(`p_type`), the address where the segment is located(`p_vaddr`), and the size of the segment(`p_filesz`)
+
+> **p_type** offset=0x00,   size=4bytes         
+> **p_vaddr** offset=0x10   size=8bytes<br>
+> **p_filesz** offset=0x20  size=8bytes
+
+In the loop that you wrote before you going to add the offset.
+In my case the dynamic entry is the 7th
+
+    // e_phoff+(e_phentsize*i)+p_type
+    :> s 0x40+(0x38*0x06)+0x00
+    0x00000190  0200 0000
+    
+    // e_phoff+(e_phentsize*i)+p_vaddr
+    :> s 0x40+(0x38*0x06)+0x10
+    0x000001a0  883d 0000 0000 0000
+
+    // e_phoff+(e_phentsize*i)+p_filesz
+    :> s 0x40+(0x38*0x06)+0x20
+    0x000001b0  0002 0000 0000 0000
+
+p_type = 0x02 that means PT_DYNAMIC Dynamic linking information<br> 
+p_vaddr = 0x3d88 address of PT_DYNAMIC <br>
+p_filesz = 0x200 (512bytes) size of PT_DYNAMIC.
+
+PT_DYNAMIC contains an array of the next structure (refLink):
+
+    typedef struct {
+        Elf64_Sxword    d_tag;
+        union {
+            Elf64_Xword d_val;
+            Elf64_Addr  d_ptr;
+        } d_un;
+    } Elf64_Dyn;
