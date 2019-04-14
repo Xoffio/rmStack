@@ -1,0 +1,7 @@
+https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
+http://www.sco.com/developers/gabi/latest/ch5.pheader.html
+http://www.sco.com/developers/gabi/latest/ch4.sheader.html
+http://www.sco.com/developers/gabi/latest/ch5.dynamic.html
+http://www.sco.com/developers/gabi/latest/ch4.intro.html
+http://www.sco.com/developers/gabi/latest/ch4.symtab.html
+http://www.skyfree.org/linux/references/ELF_Format.pdf
