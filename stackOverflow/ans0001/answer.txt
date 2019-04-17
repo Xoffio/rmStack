@@ -1,96 +1,77 @@
-In order to accomplish that you need some knowledge about ELF files. I'm not going explain every detail about ELF files since is a lot to cover so I'll try to be as precise as I can.
+Here I post the best result I could do in one night. I did it with shaders as you ask. I didn't implement the angles but that something not too hard.
 
-*NOTE #01: I will use radare2 to dissect the file but you can do it with any hex editor out there.*
+Here is part of the cpp file:
 
-*NOTE #02: Here is the [link][1] to the cpp file that I compile to explain you ELF files. Feel free to take it or make your own.*
+    ...
+    if (!shader.loadFromFile("dMotionBlur_v05.frag", sf::Shader::Fragment)){
+    ...
 
-First, you need to know the structure of headers in ELF files. [Here][2] you can see the structures of the headers.
-
-The first thing we want to look for is `e_ident` that represent the format of the file (32bit or 64bit) since the file header will be different depending of the file format.
-
-> **e_ident** offset=0x04, size=1byte
-
-Go to the 0x04 offset of the file and check one byte. (`s` means seek)
-
-    :> s 0x04
-    0x00000004  02
-e_ident = 0x02 means 64bit format.
-
-Now that we now the file format we need to know the offset of the section header(`e_shoff`), the size of each entry(`e_shentsize`), and the number of entries in the section header(`e_shnum`).
-
-> **e_shoff** offset=0x28   size=8bytes<br>
-> **e_shentsize** offset=0x3A   size=2bytes<br>
-> **e_shnum** offset=0x3C   size=2bytes
-
-    :> s 0x28
-    0x00000028  e03b 0000 0000 0000
-
-    :> s 0x3A
-    0x0000003a  4000
-
-    :> s 0x3C
-    0x0000003c  1d00
-
-e_shoff = 0x3be0 This is the offset of the section header.<br>
-e_shentsize = 0x40 (64 bytes)<br>
-e_shnum = 0x1d (29 entries)<br>
-
-We also going to need the index of the section header that contains the names of each section header. This is store in `e_shstrndx`
-
-> **e_shstrndx** offset=0x3E    size=2bytes
-
-    :> s 0x3e
-    0x0000003e  1c00
-
-e_shstrndx = 0x1c (entry 28)
-
-With the entry number you can get the address of shstrtab:
-
-    // e_shoff+(e_shentsize*e_shstrndx)+sh_offset
-    :> s 0x3be0+(0x40*0x1c)+0x18
-    0x000042f8  df3a 0000 0000 0000
-
-shstrtab = 0x3adf
-
-Now that you have that information you can run a loop that checks all the section entries:
+    window.clear(sf::Color(120,120,120));
     
-    //pseudocode
-    for (i=0; i<e_shnum; i++)
-        entryN = e_shoff+(e_shentsize*i);
-
-*NOTE #03:I'll not print those values here because I have to explain more but that will give you something similar to the command `readelf -W -l [program]`*
-
-Each entry has a structure like the section header. To get the name of each entry add `sh_name` to `shstrtab`  
-
-I'm only going to show you how I got `.text` but the idea will be the same for any section entry. In my case `.text` was the entry 0x0e(14). I'm going to need `sh_name`, the offset in the file `sh_offset`, and the size `sh_size`
-
-> **sh_name** offset=0x00   size=4bytes<br>
-> **sh_offset** offset=0x18     size=8bytes<br>
-> **sh_size** offset=0x20   size=8bytes
-
-    //e_shoff+(e_shentsize*e_shstrndx)+sh_name
-    :> s 0x3be0+(0x40*0x0e)+0x00
-    0x00003f60  9d00 0000
-
-    // Get the name
-    :> s 0x3adf+0x9d
-    0x00003b7c  2e74 6578 7400 2e66 696e 6900 2e72 6f64  .text..fini..rod
-
-    //e_shoff+(e_shentsize*e_shstrndx)+sh_offset
-    :> s 0x3be0+(0x40*0x0e)+0x18
-    0x00003f78  9010 0000 0000 0000
+    // Passing parameters to shader.
+    shader.setUniform("dir", dir); //direction of blur
+    shader.setUniform("nSamplesF", (float)std::atoi(argv[3])); // number of samples
+    shader.setUniform("radius", (float)std::atof(argv[4]) ); //radius of blur
     
-    //e_shoff+(e_shentsize*e_shstrndx)+sh_size
-    :> s 0x3be0+(0x40*0x0e)+0x20
-    0x00003f80  3102 0000 0000 0000
+    window.draw(sprite, &shader);
+    window.display();
+    ...
 
-entryName = 0x3be0 // .text<br>
-sh_offset = 0x1090<br>
-sh_size = 0x0231 (561bytes)<br>
+This is the fragment shader:
 
-If you can't found it this way then your ELF file must be corrupted. You can take the one I [compile][3] to follow this explanation. Good luck. 
+    uniform sampler2D u_texture;
+    uniform float nSamplesF;
+    uniform float radius;
+    uniform vec2 dir;
+    
+    void main(){
+        vec2 tc = gl_TexCoord[0].xy;
+        float blur = radius;
+        float hstep = dir.x;
+        float vstep = dir.y;
+        float total = 0.0;
+        int nSamplesI = int(nSamplesF);
+    
+        vec4 sum = vec4(0.0);
+    
+        for (int i=1; i<=nSamplesI; i++){
+            float floatI = float(i);
+            float counter = nSamplesF-floatI+1.0;
+    
+            float p = floatI/nSamplesF;
+            float tO = (p * 0.1783783784) + 0.0162162162;
+            total += tO;
+    
+            sum += texture2D(u_texture, vec2(tc.x - counter*blur*hstep, tc.y - counter*blur*vstep)) * tO;
+        }
+        
+        sum += texture2D(u_texture, vec2(tc.x, tc.y)) * 0.2270270270;
+    
+        for (int i=nSamplesI; i>=1; i--){
+            float floatI = float(i);
+            float counter = nSamplesF-floatI+1.0;
+    
+            float p = floatI/nSamplesF;
+            float tO = (p * 0.1783783784) + 0.0162162162;
+            total += tO;
+    
+            sum += texture2D(u_texture, vec2(tc.x + counter*blur*hstep, tc.y + counter*blur*vstep)) * tO;
+        }
+    
+        gl_FragColor =  gl_Color * (sum/total);
+    }
 
+I upload the [entire code][1] to my repository so you can downloaded and try.
+You can set x/Y direction, sample, and blur radius. 
+X/Y directions are from 0-1.
+You can play with the number of samples.
+The blur radius is very sensitive you can start try with 0.01
 
-  [1]: https://github.com/Ricx8/rmStack/tree/master/reverseEngineering/ans0001
-  [2]: https://en.wikipedia.org/wiki/Executable_and_Linkable_Format
-  [3]: https://github.com/Ricx8/rmStack/tree/master/reverseEngineering/ans0001/exec
+with my example would be:
+
+    $ ./sfml-app [x(0-1)] [Y(0-1] [number of sample] [ radius blur]
+
+Some pics:
+
+[![][2]][2]
+[![][3]][3]
