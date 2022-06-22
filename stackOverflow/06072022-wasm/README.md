@@ -22,6 +22,11 @@ To compile it into `wasm-test01`, and run:
 wasm-pack build
 ```
 
+To generate the `www` folder, run:
+```bash
+npm init wasm-app www
+```
+
 To run the tmp server go into the folder `wasm-test01/www` and run:
 ```bash
 cd wasm-test01/www
