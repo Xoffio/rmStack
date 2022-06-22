@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "stackOverflow/06072022-wasm/add/Cargo.toml",
+        "stackOverflow/06072022-wasm/wasm-test01/Cargo.toml"
+    ]
+}
